@@ -4,6 +4,9 @@ Also contains methods for extracting metadata (geospatial/temporal).
 """
 
 import logging
+import json
+import os
+
 
 from ceda_di.filetypes.file_io import envi_io
 from ceda_di.providers import arsf
@@ -175,3 +178,60 @@ class BSQ(ENVI):
         """
         self._load_data()
         return self.data
+
+#kltsa 6/6/2016 issue 23254 : simple handler for extracting metadata from 
+#                             .hdr files.
+class HDRFile:
+
+    def __init__(self, path):
+        self.hdrvars = {}
+        self.path = path
+        with open(self.path) as hdrfile:
+            for line in hdrfile:
+                name, var = line.partition("=")[::2]
+                self.hdrvars[name.strip()] = var
+    def get_properties(self):
+
+        path = os.path.dirname(self.path)
+        size = round(os.path.getsize(self.path) / (1024*1024.0), 3)
+        filename = os.path.basename(self.path)
+        coordinates_styring = self.hdrvars["map info"].split(",")
+        lon = []
+        lon.append(coordinates_styring[2])
+        lon.append(coordinates_styring[4])
+        lon.append(coordinates_styring[6])
+        lat = []
+        lat.append(coordinates_styring[1])
+        lat.append(coordinates_styring[3])
+        lat.append(coordinates_styring[5])
+
+        coordinates = [[min(lon), min(lat)], [max(lon), max(lat)]]
+
+        request = {\
+                   "data_format": {"format": "hdr"},\
+                   "file":\
+                   {\
+                    "symlinks": [],\
+                    "path": path,\
+                    "size": size,\
+                    "filename": filename\
+                   },\
+                   "spatial":\
+                   {\
+                    "geometries":\
+                    {\
+                     "search":\
+                     {"type": "envelope",\
+                      "coordinates": coordinates\
+                     }\
+                    }\
+                   }\
+                  }
+
+        return json.dumps(request)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
